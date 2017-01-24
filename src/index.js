@@ -9,7 +9,7 @@ const debugTasks = require("debug")("promise-task-queue:tasks");
 const util = require("util");
 
 function debugObject(obj) {
-	return util.inspect(obj, {depth: null, colors: true}).replace(/\n|\r/g, "");
+	return util.inspect(obj, {depth: 1, colors: true}).replace(/\n|\r/g, "");
 }
 
 const TaskQueueError = createError("TaskQueueError", {
