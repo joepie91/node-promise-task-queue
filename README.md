@@ -85,7 +85,7 @@ This queue does *not* implement rate-limiting of the "X tasks per Y amount of ti
 
 The "X tasks per Y amount of time" type of rate-limiting will usually result in a 'burst' of tasks being executed at the same time, followed by a long waiting period. However, in many cases, this isn't what you want at all - and for this reason and to reduce implementation complexity, `promise-task-queue` implements a 'smoothed out' version of rate-limiting instead, where there is a minimum interval between each task.
 
-Say that you make a request to a particular API on behalf of your users, and the API limits you to 30 requests per second. When using `promise-task-queue`, you would specify the `interval` as `2` seconds, because `60 / 30 == 2`. When you are going over capacity, this will cause a usually short delay for your users - best case, they would be looking at a 2 second delay for their request, if they'd made it right after the average rate limit was hit.
+Say that you make a request to a particular API on behalf of your users, and the API limits you to 30 requests per minute. When using `promise-task-queue`, you would specify the `interval` as `2` seconds, because `60 / 30 == 2`. When you are going over capacity, this will cause a usually short delay for your users - best case, they would be looking at a 2 second delay for their request, if they'd made it right after the average rate limit was hit.
 
 When using a 'bursty' model of rate-limiting, once you go over capacity, the best case is that a user in that same scenario would have to wait *an entire minute* for the next 'batch' of API requests to become available. By 'smoothing out' tasks instead, you avoid this scenario, and your application becomes 'just a bit slow' rather than 'broken', as far as the user is concerned.
 
@@ -118,6 +118,36 @@ Adds a task to the queue for the given `type`.
 
 Note that this function will __return a Promise__, passing through the result from the task handler. If the Promise from the task handler resolves, then the one returned from this function will resolve with the same value. If the Promise from the task handler is rejected, this one will also reject, with the same error.
 
+### queue.drain(type)
+
+Drains (ie. empties) the queue for the given `type`. Note that this __will not__ try to stop or 'cancel' *running* tasks; it will simply remove the *upcoming* tasks that are still in the queue.
+
+* __type__: The name of the task type, as specified in `queue.define`.
+
+### queue.awaitDrained(type)
+
+Returns a Promise that will resolve when the task queue has run out of tasks for a given `type`. Some of the previously queued tasks may still be running, however - this simply signals that there are no *upcoming* tasks scheduled anymore.
+
+* __type__: The name of the task type, as specified in `queue.define`.
+
+This can be useful for keeping metrics of the queue status.
+
+__Caution:__ The returned Promise will only resolve __exactly once__, as soon as the amount of pending tasks reaches 0 and the queue tries to run the next task - and since the queue cannot distinguish between the origin of tasks, this function will only be useful in cases without concurrency. It will also not work correctly if you add tasks asynchronously and don't handle your asynchronous sequences very carefully.
+
+In short; only use this method if you're very certain that you fully understand - and can predict - the execution order of your (asynchronous) code.
+
+### queue.awaitCompleted(type)
+
+Returns a Promise that will resolve when the task queue has run out of tasks for a given `type`, and all the running tasks have finished.
+
+* __type__: The name of the task type, as specified in `queue.define`.
+
+This is useful for, for example, complex multi-operation build processes, where you want to wait for all existing tasks to finish before moving on.
+
+__Caution:__ The returned Promise will only resolve __exactly once__, as soon as the last running task finishes and there are no tasks left in the queue - and since the queue cannot distinguish between the origin of tasks, this function will only be useful in cases without concurrency. It will also not work correctly if you add tasks asynchronously and don't handle your asynchronous sequences very carefully.
+
+In short; only use this method if you're very certain that you fully understand - and can predict - the execution order of your (asynchronous) code.
+
 ### Events
 
 All of these events are emitted on the `queue` object. Where you see `$type` in an event name, this will be replaced with the task type that it occurred for. For example, for an `apiRequest` task type, you might see a `failed:apiRequest` event.
@@ -146,7 +176,11 @@ Emitted when the queue for this task type starts running, while it was previousl
 
 #### 'queueDrained:$type'
 
-Emitted when the queue for this task type has drained (ie. ran out of tasks). No arguments are passed to the event handler.
+Emitted when the queue for this task type has drained (ie. ran out of queued tasks). Some of the tasks may still be running, however. No arguments are passed to the event handler.
+
+#### 'queueCompleted:$type'
+
+Emitted when the queue for this task type has fully completed (ie. the queue has drained, and all running tasks have finished). No arguments are passed to the event handler.
 
 #### 'delayed:$type'
 
@@ -155,3 +189,13 @@ Emitted when a task has been delayed because of the `interval` rate-limit. Note 
 #### 'concurrencyReached:$type'
 
 Emitted when a task has been queued up because of the `concurrency` limit. Can be useful to detect when your queue is backing up.
+
+## Changelog
+
+* __1.2.0:__ Various changes:
+	* Added `awaitCompleted` and `drain` methods, and `queueCompleted` event.
+	* Fixed the `awaitDrained` Promise never resolving.
+	* Added debugging statements in the code.
+* __1.1.1:__ Fixed typo in the example; unit in the API rate limit should've been 'per minute', not 'per second'.
+* __1.1.0:__ Added `awaitDrained` method.
+* __1.0.0:__ Initial release.
